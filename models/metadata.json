@@ -1,0 +1,52 @@
+{
+  "model_name": "Logistic Regression",
+  "label_map": {
+    "0": "LIKELY RELIABLE",
+    "1": "LIKELY MISINFORMATION"
+  },
+  "features": {
+    "text": true,
+    "social": true,
+    "stylistic": true,
+    "numeric_columns": [
+      "log_tweet_count",
+      "title_word_count",
+      "title_char_count",
+      "exclamation_count",
+      "question_count",
+      "all_caps_ratio",
+      "has_number"
+    ]
+  },
+  "sources": [
+    "malaysia"
+  ],
+  "max_features": 5000,
+  "n_train": 228,
+  "n_test": 72,
+  "trained_at": "2026-09-29 16:05:30",
+  "fit_seconds": 0.21,
+  "risk_scoring": {
+    "alpha": 0.6,
+    "beta": 0.4,
+    "log_tweet_min": 2.6390573296152584,
+    "log_tweet_max": 8.510369966068112,
+    "risk_levels": [
+      {
+        "name": "Low",
+        "min": 0,
+        "max": 39
+      },
+      {
+        "name": "Medium",
+        "min": 40,
+        "max": 69
+      },
+      {
+        "name": "High",
+        "min": 70,
+        "max": 100
+      }
+    ]
+  }
+}
