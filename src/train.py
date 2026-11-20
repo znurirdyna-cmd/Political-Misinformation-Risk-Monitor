@@ -221,14 +221,13 @@ def train(df: pd.DataFrame, config: TrainConfig) -> dict:
     test_metrics = evaluate(pipeline, X_test, y_test)
     train_metrics = evaluate(pipeline, X_train, y_train)
 
-    # Propagation-risk normalisation bounds, fitted on the training split only
-    # (log-scale min-max so a few viral outliers do not dominate the scale).
-    if "log_tweet_count" in X_train.columns:
-        log_tweet_counts = X_train["log_tweet_count"].dropna()
-        log_tweet_min = float(log_tweet_counts.min())
-        log_tweet_max = float(log_tweet_counts.max())
-    else:
-        log_tweet_min = log_tweet_max = None
+    # Spread scoring is separate from classifier training. The available
+    # Malaysia dataset has no verified share counts. Use an explicitly
+    # illustrative fixed logarithmic reference (5,000 shares = 100), rather
+    # than deriving a data-driven scale from fabricated label-based counts.
+    # This is a design assumption, NOT an empirically fitted benchmark.
+    log_tweet_min = 0.0
+    log_tweet_max = float(np.log1p(5000))
 
     metadata = {
         "model_name": config.model_name,
@@ -250,6 +249,8 @@ def train(df: pd.DataFrame, config: TrainConfig) -> dict:
             "beta": 0.4,
             "log_tweet_min": log_tweet_min,
             "log_tweet_max": log_tweet_max,
+            "spread_reference_shares": 5000,
+            "spread_scale_basis": "illustrative_fixed_reference_not_empirical",
             "risk_levels": [
                 {"name": "Low", "min": 0, "max": 39},
                 {"name": "Medium", "min": 40, "max": 69},
