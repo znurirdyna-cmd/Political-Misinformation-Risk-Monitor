@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 
-import numpy as np
 import pandas as pd
 
 from .config import (
@@ -118,8 +117,7 @@ def load_malaysia() -> pd.DataFrame:
 
     Expected columns: ``title``, ``label`` (1 = misinformation, 0 = reliable),
     optional ``news_url`` and ``tweet_count``. Missing/zero share counts are
-    filled with a deterministic simulated value (misinformation tends to spread
-    more) — a documented limitation when real engagement data is unavailable.
+    kept as unknown when unverified. No synthetic engagements are generated.
 
     If an augmented file exists (``malaysia_news_augmented.csv``) it is used in
     preference to the raw seed file.
@@ -155,7 +153,10 @@ def load_malaysia() -> pd.DataFrame:
         pd.to_numeric(df["tweet_count"], errors="coerce").fillna(0).astype(int)
     )
 
-    df = _simulate_missing_shares(df)
+    # The input CSV uses zero for missing engagement. The project does not
+    # contain verified observed share counts, so do not treat these zeros as
+    # proof of zero shares or manufacture shares from the true class label.
+    df["engagement_known"] = df["tweet_count"] > 0
     df["source"] = MALAYSIA_SOURCE
     df["id"] = [f"my-{i + 1:06d}" for i in range(len(df))]
     df["tweet_ids"] = ""
@@ -163,22 +164,3 @@ def load_malaysia() -> pd.DataFrame:
     return df
 
 
-def _simulate_missing_shares(df: pd.DataFrame) -> pd.DataFrame:
-    """Fill zero share counts with a deterministic simulated value.
-
-    Misinformation (label 1) is given a larger share range than reliable news
-    (label 0), reflecting the well-documented tendency for false content to
-    spread further. Only rows that do not already carry a real share count are
-    touched.
-    """
-    mask = df["tweet_count"] <= 0
-    if not mask.any():
-        return df
-    rng = np.random.default_rng(42)
-    fake = (df["label"] == 1) & mask
-    real = (df["label"] == 0) & mask
-    if fake.any():
-        df.loc[fake, "tweet_count"] = rng.integers(300, 5000, size=int(fake.sum()))
-    if real.any():
-        df.loc[real, "tweet_count"] = rng.integers(5, 400, size=int(real.sum()))
-    return df
