@@ -29,7 +29,7 @@ class Predictor:
             "No trained model found and no dataset available to train a fallback."
         )
 
-    def predict(self, title: str, body: str | None = None, tweet_count: int = 0):
+    def predict(self, title: str, body: str | None = None, tweet_count: int | None = None):
         """Predict a single article. Returns (label, probability, details)."""
         if self.pipeline is None:
             raise RuntimeError("Predictor has no fitted pipeline.")
@@ -37,7 +37,7 @@ class Predictor:
         cols = self.metadata.get("features", {}).get("numeric_columns", [])
         row = pd.DataFrame({ft.TEXT_COLUMN: [ft.join_text(title, body)], "title": [title]})
         if "log_tweet_count" in self.metadata.get("features", {}).get("numeric_columns", []):
-            row["tweet_count"] = [int(tweet_count)]
+            row["tweet_count"] = [0 if tweet_count is None else int(tweet_count)]
 
         numeric, _ = ft.build_features(
             row,
@@ -55,12 +55,12 @@ class Predictor:
         p_fake = float(np.clip(training.score_signal(self.pipeline, X)[0], 0.0, 1.0))
 
         label_name = self.metadata.get("label_map", {})[str(label)]
-        risk = self.compute_risk_score(p_fake, int(tweet_count))
+        risk = self.compute_risk_score(p_fake, tweet_count)
 
         return label, label_name, float(p_fake), {
             "raw_score": float(p_fake),
             "features_used": self.metadata.get("features", {}),
-            "tweet_count": int(tweet_count),
+            "tweet_count": tweet_count,
             "model": self.metadata.get("model_name", "unknown"),
             **risk,
         }
@@ -109,7 +109,7 @@ class Predictor:
         return out
 
     def compute_risk_score(
-        self, p_fake: float, tweet_count: int
+        self, p_fake: float, tweet_count: int | None
     ) -> dict[str, float | str]:
         """Composite cyber risk score (report §3.6).
 
@@ -123,6 +123,26 @@ class Predictor:
         alpha = float(rs.get("alpha", 0.6))
         beta = float(rs.get("beta", 0.4))
         content_risk = float(np.clip(p_fake, 0.0, 1.0)) * 100.0
+
+        if tweet_count is None:
+            # The absence of an engagement count must not be interpreted
+            # as observed zero engagement. No 60/40 score can be computed.
+            risk_score = content_risk
+            level = "Medium"
+            for candidate in rs.get("risk_levels", []):
+                if candidate.get("min", 0) <= risk_score <= candidate.get("max", 100):
+                    level = candidate["name"]
+                    break
+            return {
+                "risk_score": risk_score,
+                "risk_level": level,
+                "content_risk": content_risk,
+                "propagation_risk": None,
+                "engagement_known": False,
+                "alpha": alpha,
+                "beta": beta,
+                "risk_levels": rs.get("risk_levels", []),
+            }
 
         log_min = rs.get("log_tweet_min")
         log_max = rs.get("log_tweet_max")
@@ -147,6 +167,7 @@ class Predictor:
             "risk_level": level,
             "content_risk": content_risk,
             "propagation_risk": propagation_risk,
+            "engagement_known": True,
             "alpha": alpha,
             "beta": beta,
             "risk_levels": rs.get("risk_levels", []),
