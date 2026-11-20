@@ -422,8 +422,6 @@ def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) ->
 
 def page_stories() -> None:
     catalog = get_catalog()
-    # The label is intentionally small, rather than a large blue alert box.
-    st.caption("Prototype demonstration: sharing counts on this page are simulated, not observed. Combined risk scores use simulated spread risk and should not be interpreted as real-world propagation.")
 
     if "story" in st.session_state and st.session_state["story"] in catalog.index:
         st.button("← Back to all articles", on_click=close_story)
