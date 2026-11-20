@@ -6,10 +6,9 @@
   },
   "features": {
     "text": true,
-    "social": true,
+    "social": false,
     "stylistic": true,
     "numeric_columns": [
-      "log_tweet_count",
       "title_word_count",
       "title_char_count",
       "exclamation_count",
@@ -21,16 +20,16 @@
   "sources": [
     "malaysia"
   ],
-  "max_features": 5000,
+  "max_features": 20000,
   "n_train": 228,
   "n_test": 72,
-  "trained_at": "2026-09-29 16:05:30",
-  "fit_seconds": 0.21,
+  "trained_at": "2026-11-20 12:09:26",
+  "fit_seconds": 0.17,
   "risk_scoring": {
     "alpha": 0.6,
     "beta": 0.4,
-    "log_tweet_min": 2.6390573296152584,
-    "log_tweet_max": 8.510369966068112,
+    "log_tweet_min": 0.0,
+    "log_tweet_max": 8.517393171418904,
     "risk_levels": [
       {
         "name": "Low",
@@ -47,6 +46,8 @@
         "min": 70,
         "max": 100
       }
-    ]
+    ],
+    "spread_reference_shares": 5000,
+    "spread_scale_basis": "illustrative_fixed_reference_not_empirical"
   }
 }
