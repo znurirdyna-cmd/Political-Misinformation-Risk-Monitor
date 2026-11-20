@@ -195,7 +195,7 @@ def in_short(content_risk: float, propagation_risk: float, level: str) -> str:
 
 
 def shared_more_than(shares: int, all_shares: pd.Series) -> str:
-    if all_shares.empty:
+    if all_shares.empty or not (pd.to_numeric(all_shares, errors="coerce").fillna(0) > 0).any():
         return ""
     frac = float((all_shares < shares).mean())
     if frac >= 0.9:
@@ -314,7 +314,10 @@ def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) ->
     )
 
     if engagement_known and spread is not None:
-        summary = in_short(content, spread, level)
+        summary = (f"The article has estimated content risk of {content:.0f}/100 and "
+                   f"spread risk of {spread:.0f}/100 on an illustrative scale "
+                   "(5,000 shares corresponds to 100). This is a risk estimate, "
+                   "not a verification of the claim.")
     else:
         summary = (
             "This is a content-based estimate only. No share count was provided; "
@@ -395,6 +398,7 @@ def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) ->
 
 def page_stories() -> None:
     catalog = get_catalog()
+    st.info("Dataset records do not include verified engagement counts. Where sharing activity is unknown, the displayed risk is a content-only estimate, not a combined 60/40 score.")
 
     if "story" in st.session_state and st.session_state["story"] in catalog.index:
         st.button("← Back to all articles", on_click=close_story)
@@ -510,8 +514,9 @@ def page_stories() -> None:
         c[1].markdown(verdict_badge(row["pred_label"]), unsafe_allow_html=True)
         c[2].markdown(badge(row["risk_level"], row["risk_score"]), unsafe_allow_html=True)
         c[3].markdown(looks_false_word(row["content_risk"]))
-        c[4].markdown(spreading_word(row["propagation_risk"]))
-        c[5].markdown(f"{int(row['tweet_count']):,}")
+        has_shares = bool(row.get("engagement_known", False))
+        c[4].markdown(spreading_word(float(row["propagation_risk"])) if has_shares else "Not available")
+        c[5].markdown(f"{int(row['tweet_count']):,}" if has_shares else "Unknown")
         c[6].button("View details", key=f"view_{idx}", on_click=open_story, args=(idx,),
                     type="primary" if row["risk_level"] == "High" else "secondary",
                     width="stretch")
@@ -532,6 +537,7 @@ def page_check() -> None:
     html_block("<p class='rm-muted'>Enter a political headline to assess its risk. "
                "The result uses the same assessment as the articles on the main page.</p>")
 
+    st.caption("If you have verified share counts, the spread component uses an illustrative logarithmic scale reaching 100 at 5,000 shares, not an empirically calibrated engagement benchmark.")
     with st.form("check_form"):
         headline = st.text_input("Headline", placeholder="Paste the headline here…")
         body = st.text_area("Full article (optional — improves accuracy)", height=140,
