@@ -272,34 +272,37 @@ def reset_list() -> None:
 # --------------------------------------------------------------------------- #
 
 def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) -> None:
-    level = story["risk_level"]
-    s = LEVELS[level]
+    """Show either a complete 60/40 assessment or a labelled content-only assessment."""
+    level = str(story["risk_level"])
+    style = LEVELS[level]
     score = float(story["risk_score"])
     content = float(story["content_risk"])
-    spread = float(story["propagation_risk"])
-    shares = int(story.get("tweet_count", 0) or 0)
+    engagement_known = bool(story.get("engagement_known", True))
+    spread_value = story.get("propagation_risk")
+    spread = float(spread_value) if engagement_known and spread_value is not None else None
+    shares_value = story.get("tweet_count")
+    shares = int(shares_value) if engagement_known and shares_value is not None else None
     pred_label = int(story.get("pred_label", 0))
-
-    # Points each part adds. Rounding can leave the two parts 1 point off the
-    # total, so the second part takes up that difference.
+    content_pts = round(CONTENT_WEIGHT * content) if engagement_known else round(content)
+    spread_pts = round(SPREAD_WEIGHT * spread) if spread is not None else 0
     total_pts = round(score)
-    content_pts = round(content * CONTENT_WEIGHT)
-    spread_pts = round(spread * SPREAD_WEIGHT)
-    if abs(content_pts + spread_pts - total_pts) <= 1:
-        spread_pts = total_pts - content_pts
 
     head_l, head_r = st.columns([4, 1], vertical_alignment="top")
     with head_l:
         html_block("<div class='rm-eyebrow'>Assessment result</div>")
         if show_title:
             st.markdown(f"## {html.escape(str(story['title']))}")
-        html_block(f"<div class='rm-muted'>Shared {shares:,} times</div>")
+        if shares is not None:
+            html_block(f"<div class='rm-muted'>Reported shares: {shares:,}</div>")
+        else:
+            html_block("<div class='rm-muted'>Shares not supplied · content-only estimate</div>")
     with head_r:
+        method = "Combined risk" if engagement_known else "Content risk"
         html_block(
-            f"<div class='rm-scorebox' style='background:{s['bg']};color:{s['fg']};"
-            f"border:1px solid {s['border']};'>"
-            f"<div class='rm-tile-head' style='justify-content:center;'>{s['icon']} {level} risk</div>"
-            f"<div class='num'>{score:.0f}</div><div>out of 100</div></div>"
+            f"<div class='rm-scorebox' style='background:{style['bg']};color:{style['fg']};"
+            f"border:1px solid {style['border']};'>"
+            f"<div class='rm-tile-head' style='justify-content:center;'>{style['icon']} {level} risk</div>"
+            f"<div class='num'>{score:.0f}</div><div>out of 100 · {method}</div></div>"
         )
 
     st.write("")
@@ -310,52 +313,79 @@ def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) ->
         f"{v['emoji']} {v['word']}</div>"
     )
 
-    st.write("")
+    if engagement_known and spread is not None:
+        summary = in_short(content, spread, level)
+    else:
+        summary = (
+            "This is a content-based estimate only. No share count was provided; "
+            "therefore, the 60% content / 40% spread combined risk score cannot "
+            "be calculated. Verify the claim using reliable sources."
+        )
     html_block(
         "<div class='rm-card'><h3>Summary</h3>"
-        f"<p style='font-size:18px;line-height:1.55;margin:0;'>{in_short(content, spread, level)}</p>"
+        f"<p style='font-size:18px;line-height:1.55;margin:0;'>{summary}</p>"
         f"{scale_bar(score)}</div>"
     )
 
     st.write("")
     left, right = st.columns(2)
     with left:
+        content_explain = (
+            f"60% of combined score: {content_pts} points" if engagement_known
+            else "Content-only estimate; not a combined risk score"
+        )
+        spread_label = f"{spreading_word(spread)} · {spread:.0f} / 100" if spread is not None else "Not available"
+        spread_width = f"{spread:.0f}" if spread is not None else "0"
+        spread_explain = (
+            f"40% of combined score: {spread_pts} points" if spread is not None
+            else "Unknown engagement is not treated as zero shares"
+        )
+        score_explain = (
+            f"{content_pts} + {spread_pts} =" if spread is not None
+            else "Content only ="
+        )
         html_block(
-            f"<div class='rm-card'><h3>How the score is calculated</h3>"
+            "<div class='rm-card'><h3>How the score is calculated</h3>"
             "<div style='display:flex;justify-content:space-between;font-size:16px;margin-top:14px;'>"
-            f"<strong>Content risk</strong><span><strong>{looks_false_word(content)}</strong> · {content:.0f} / 100</span></div>"
+            f"<strong>Content risk</strong><span>{looks_false_word(content)} · {content:.0f} / 100</span></div>"
             f"<div class='rm-meter'><div style='width:{content:.0f}%;background:#3B3F47;'></div></div>"
-            f"<div class='rm-muted' style='font-size:14px;'>Accounts for {CONTENT_WEIGHT:.0%} of the score ({content_pts} points)</div>"
+            f"<div class='rm-muted' style='font-size:14px;'>{content_explain}</div>"
             "<div style='display:flex;justify-content:space-between;font-size:16px;margin-top:18px;'>"
-            f"<strong>Spread risk</strong><span><strong>{spreading_word(spread)}</strong> · {spread:.0f} / 100</span></div>"
-            f"<div class='rm-meter'><div style='width:{spread:.0f}%;background:#8A8E97;'></div></div>"
-            f"<div class='rm-muted' style='font-size:14px;'>Accounts for {SPREAD_WEIGHT:.0%} of the score ({spread_pts} points)</div>"
+            f"<strong>Spread risk</strong><span>{spread_label}</span></div>"
+            f"<div class='rm-meter'><div style='width:{spread_width}%;background:#8A8E97;'></div></div>"
+            f"<div class='rm-muted' style='font-size:14px;'>{spread_explain}</div>"
             "<div style='display:flex;justify-content:space-between;align-items:center;margin-top:18px;"
             "padding:12px 16px;border-radius:10px;background:#F7F5EF;font-size:16px;'>"
-            f"<span>{content_pts} + {spread_pts} =</span><strong style='font-size:19px;'>{total_pts} · {level} risk</strong></div>"
+            f"<span>{score_explain}</span>"
+            f"<strong style='font-size:19px;'>{total_pts} · {level} risk</strong></div>"
             "</div>"
         )
     with right:
-        compare = shared_more_than(shares, all_shares)
-        compare_html = (
-            f"<p style='font-size:17px;line-height:1.5;margin:12px 0 18px;'>"
-            f"This article has been shared <strong>{shares:,} times</strong>, which is {compare}.</p>"
-            if compare else ""
+        compare = shared_more_than(shares, all_shares) if shares is not None else ""
+        if compare:
+            share_html = (
+                f"<p style='font-size:17px;line-height:1.5;margin:12px 0 18px;'>"
+                f"This article has {shares:,} reported shares, {compare}.</p>"
+            )
+        elif shares is None:
+            share_html = "<p>Sharing activity has not been provided.</p>"
+        else:
+            share_html = f"<p>Reported shares: {shares:,}.</p>"
+        advice = (
+            "Check this claim against an official source before sharing it."
+            if not engagement_known else {
+                "High": "Prioritise independent fact-checking and verification.",
+                "Medium": "Monitor the claim and verify its supporting evidence.",
+                "Low": "No immediate propagation concern is indicated; verify before sharing.",
+            }[level]
         )
-        advice = {
-            "High": "Submit it to a fact-checker or verify it against an official source today.",
-            "Medium": "No action is required yet. Review it again if it begins to spread more widely.",
-            "Low": "No action is required at this time.",
-        }[level]
         html_block(
             "<div class='rm-card'><h3>Sharing activity</h3>"
-            f"{compare_html}"
+            f"{share_html}"
             "<h3 style='margin-top:8px;'>Recommended action</h3>"
             f"<p style='font-size:16px;line-height:1.5;margin:6px 0 16px;'>{advice}</p>"
-            "<div class='rm-note'>This is an indication of risk, not a definitive verdict. "
-            "The system may be incorrect, so please verify against an official source "
-            "before responding publicly.</div>"
-            "</div>"
+            "<div class='rm-note'>Risk estimates are not fact-checking verdicts. "
+            "The model can be incorrect; check official and independent sources.</div></div>"
         )
 
 
@@ -506,9 +536,11 @@ def page_check() -> None:
         headline = st.text_input("Headline", placeholder="Paste the headline here…")
         body = st.text_area("Full article (optional — improves accuracy)", height=140,
                             placeholder="Paste the rest of the article here…")
+        shares_known = st.checkbox("I know the number of shares", value=False)
         shares = st.number_input(
-            "Number of shares (enter 0 if unknown)",
-            min_value=0, max_value=10_000_000, value=0, step=1,
+            "Number of shares", min_value=0, max_value=10_000_000,
+            value=0, step=1, disabled=not shares_known,
+            help="Leave unchecked when the number of shares is unknown."
         )
         submitted = st.form_submit_button("Assess this article", type="primary", width="stretch")
 
@@ -522,8 +554,15 @@ def page_check() -> None:
             except Exception as exc:  # noqa: BLE001
                 st.error(f"The assessment service could not start: {exc}")
                 return
+            if predictor.metadata.get("features", {}).get("social", False):
+                st.warning(
+                    "The currently deployed classifier was trained with share counts. "
+                    "Its text-only estimates may be unreliable until the model is retrained "
+                    "without the social feature."
+                )
             label, _name, _p_fake, details = predictor.predict(
-                headline, body if body.strip() else None, int(shares)
+                headline, body if body.strip() else None,
+                int(shares) if shares_known else None,
             )
         st.session_state["checked"] = {
             "title": headline.strip(),
@@ -531,7 +570,8 @@ def page_check() -> None:
             "risk_level": details["risk_level"],
             "content_risk": details["content_risk"],
             "propagation_risk": details["propagation_risk"],
-            "tweet_count": int(shares),
+            "tweet_count": int(shares) if shares_known else None,
+            "engagement_known": shares_known,
             "pred_label": label,
         }
 
