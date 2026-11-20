@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import hashlib
 
 import pandas as pd
 import streamlit as st
@@ -136,8 +137,22 @@ def get_predictor() -> Predictor:
 
 @st.cache_data(show_spinner="Assessing all articles (first load only)…")
 def get_catalog() -> pd.DataFrame:
-    predictor = get_predictor()
-    return predictor.score_df(load_data())
+    # Simulate shares ONLY for the Articles for Review prototype display.
+    # This does NOT change the underlying CSV, the classifier, or the
+    # Article Assessment page. Simulated counts are reproducible and are
+    # deliberately independent of misinformation labels or predictions.
+    articles = load_data().copy()
+
+    def demo_shares(row: pd.Series) -> int:
+        identifier = f"{row.get('id', '')}|{row.get('title', '')}"
+        digest = hashlib.sha256(identifier.encode('utf-8')).digest()
+        return 10 + (int.from_bytes(digest[:8], 'big') % 4991)
+
+    articles['tweet_count'] = articles.apply(demo_shares, axis=1)
+    articles['engagement_known'] = True
+    result = get_predictor().score_df(articles)
+    result['engagement_simulated'] = True
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -278,6 +293,7 @@ def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) ->
     score = float(story["risk_score"])
     content = float(story["content_risk"])
     engagement_known = bool(story.get("engagement_known", True))
+    engagement_simulated = bool(story.get("engagement_simulated", False))
     spread_value = story.get("propagation_risk")
     spread = float(spread_value) if engagement_known and spread_value is not None else None
     shares_value = story.get("tweet_count")
@@ -293,7 +309,8 @@ def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) ->
         if show_title:
             st.markdown(f"## {html.escape(str(story['title']))}")
         if shares is not None:
-            html_block(f"<div class='rm-muted'>Reported shares: {shares:,}</div>")
+            share_type = "Simulated shares (prototype only)" if engagement_simulated else "User-provided shares"
+            html_block(f"<div class='rm-muted'>{share_type}: {shares:,}</div>")
         else:
             html_block("<div class='rm-muted'>Shares not supplied · content-only estimate</div>")
     with head_r:
@@ -314,10 +331,14 @@ def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) ->
     )
 
     if engagement_known and spread is not None:
+        source_note = (
+            " The share count is simulated for demonstration, not measured engagement."
+            if engagement_simulated else ""
+        )
         summary = (f"The article has estimated content risk of {content:.0f}/100 and "
                    f"spread risk of {spread:.0f}/100 on an illustrative scale "
                    "(5,000 shares corresponds to 100). This is a risk estimate, "
-                   "not a verification of the claim.")
+                   f"not a verification of the claim.{source_note}")
     else:
         summary = (
             "This is a content-based estimate only. No share count was provided; "
@@ -366,14 +387,17 @@ def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) ->
     with right:
         compare = shared_more_than(shares, all_shares) if shares is not None else ""
         if compare:
+            kind = "simulated" if engagement_simulated else "user-provided"
             share_html = (
                 f"<p style='font-size:17px;line-height:1.5;margin:12px 0 18px;'>"
-                f"This article has {shares:,} reported shares, {compare}.</p>"
+                f"This article has {shares:,} {kind} shares, {compare}. "
+                f"{'This is prototype demonstration data, not actual reach.' if engagement_simulated else ''}</p>"
             )
         elif shares is None:
             share_html = "<p>Sharing activity has not been provided.</p>"
         else:
-            share_html = f"<p>Reported shares: {shares:,}.</p>"
+            kind = "Simulated shares (prototype only)" if engagement_simulated else "User-provided shares"
+            share_html = f"<p>{kind}: {shares:,}.</p>"
         advice = (
             "Check this claim against an official source before sharing it."
             if not engagement_known else {
@@ -398,6 +422,8 @@ def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) ->
 
 def page_stories() -> None:
     catalog = get_catalog()
+    # The label is intentionally small, rather than a large blue alert box.
+    st.caption("Prototype demonstration: sharing counts on this page are simulated, not observed. Combined risk scores use simulated spread risk and should not be interpreted as real-world propagation.")
 
     if "story" in st.session_state and st.session_state["story"] in catalog.index:
         st.button("← Back to all articles", on_click=close_story)
@@ -468,7 +494,7 @@ def page_stories() -> None:
             f"<div style='display:flex;justify-content:space-between;'><strong>2. Spread risk</strong>"
             f"<span class='rm-muted'>counts {SPREAD_WEIGHT:.0%}</span></div>"
             f"<div class='rm-meter'><div style='width:{SPREAD_WEIGHT * 100:.0f}%;background:#8A8E97;'></div></div>"
-            "<div class='rm-muted' style='font-size:14px;'>How widely the article is shared relative to other articles.</div>"
+            "<div class='rm-muted' style='font-size:14px;'>Simulated shares for prototype use only; not measured engagement.</div>"
             f"{scale_bar()}</div>"
         )
 
@@ -501,7 +527,7 @@ def page_stories() -> None:
 
     widths = [5, 2, 1.4, 1.4, 1.4, 1.0, 1.6]
     head = st.columns(widths)
-    for col, label in zip(head, ["Article", "Verdict", "Risk level", "Content risk", "Spread risk", "Shares", ""]):
+    for col, label in zip(head, ["Article", "Verdict", "Risk level", "Content risk", "Spread risk", "Simulated shares", ""]):
         col.markdown(f"<div class='rm-colhead'>{label}</div>", unsafe_allow_html=True)
     html_block("<hr class='rm-rule'>")
 
