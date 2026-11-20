@@ -398,7 +398,6 @@ def render_story(story: dict, all_shares: pd.Series, show_title: bool = True) ->
 
 def page_stories() -> None:
     catalog = get_catalog()
-    st.info("Dataset records do not include verified engagement counts. Where sharing activity is unknown, the displayed risk is a content-only estimate, not a combined 60/40 score.")
 
     if "story" in st.session_state and st.session_state["story"] in catalog.index:
         st.button("← Back to all articles", on_click=close_story)
