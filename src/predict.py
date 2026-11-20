@@ -35,9 +35,21 @@ class Predictor:
             raise RuntimeError("Predictor has no fitted pipeline.")
 
         cols = self.metadata.get("features", {}).get("numeric_columns", [])
-        row = pd.DataFrame({ft.TEXT_COLUMN: [ft.join_text(title, body)], "title": [title]})
-        if "log_tweet_count" in self.metadata.get("features", {}).get("numeric_columns", []):
-            row["tweet_count"] = [0 if tweet_count is None else int(tweet_count)]
+        # Always construct a complete one-row frame. The saved pipeline may
+        # require a tweet_count column even when engagement is unavailable.
+        # The missing count is 0 ONLY for the legacy model input; the scoring
+        # function below still receives None and does not treat it as measured.
+        try:
+            model_shares = 0 if tweet_count is None else max(0, int(tweet_count))
+        except (TypeError, ValueError, OverflowError):
+            model_shares = 0
+            tweet_count = None
+
+        row = pd.DataFrame.from_records([{
+            ft.TEXT_COLUMN: ft.join_text(title, body),
+            "title": str(title),
+            "tweet_count": model_shares,
+        }])
 
         numeric, _ = ft.build_features(
             row,
